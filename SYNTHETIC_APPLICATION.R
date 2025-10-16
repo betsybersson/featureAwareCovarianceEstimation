@@ -6,6 +6,7 @@ source("Schiavon_SISGaussian.R")
 library(parallel)
 library(dplyr)
 library(readxl)
+library(RColorBrewer)
 ###########################
 
 ###########################
@@ -142,6 +143,15 @@ image(x = 1:p, y = 1:p, z = cor.hat.stein.collect[,p:1],
       zlim = univ.col.lims,
       main = paste0("Posterior Correlation (CMR)"))
 plot.tesie.lines()
+cor.legend.inds = c(1,3,6,9,11)
+legend(
+  x = "bottomleft", inset  = 0.052, # position
+  legend = round(seq(univ.col.lims[1], 
+                     univ.col.lims[2], 
+                     length.out = length(col.brewer.pal)), 2)[cor.legend.inds], # only include 5 valus
+  fill   = col.brewer.pal[cor.legend.inds],  # representative colors
+  cex    = 1, 
+  bg = "white")
 
 
 ####################################
