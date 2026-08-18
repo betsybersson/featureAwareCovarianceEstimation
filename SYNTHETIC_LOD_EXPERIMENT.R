@@ -104,8 +104,8 @@ for (n.ind in 1:length(n.lod.set)){
   grand.mse[n.ind,"S.IMP"] = loss_sq(test.out,just.imputedvals)
   
   
-  ## cmr.i mse
-  cmr.ylod  = CMR_cusp_GS(Y,X=NA,
+  ## face.i mse
+  face.ylod  = FACE_cusp_GS(Y,X=NA,
                           k = p,
                           S = mcmc.s,
                           burnin = mcmc.burnin,
@@ -117,15 +117,15 @@ for (n.ind in 1:length(n.lod.set)){
                           lod = lod)$y.lod
   
   # mse
-  grand.mse[n.ind,"MR.I"] = loss_sq(test.out,colMeans(cmr.ylod))
+  grand.mse[n.ind,"MR.I"] = loss_sq(test.out,colMeans(face.ylod))
   # print update to screen
-  print(paste0("Finished running CMR.I for n.lod = ", n.lod))  
+  print(paste0("Finished running FACE.I for n.lod = ", n.lod))  
   print(paste0("MSE = ", grand.mse[n.ind,"MR.I"]))  
   print(paste0("---------------------------------"))
   
   
-  ## cmr.chemclass mse
-  cmr.ylod  = CMR_cusp_GS(Y,X,
+  ## face.chemclass mse
+  face.ylod  = FACE_cusp_GS(Y,X,
                            k = p,
                            S = mcmc.s,
                            burnin = mcmc.burnin,
@@ -138,9 +138,9 @@ for (n.ind in 1:length(n.lod.set)){
                            which.cov.group = which.cov.group)$y.lod
 
   # mse
-  grand.mse[n.ind,"MR"] = loss_sq(test.out,colMeans(cmr.ylod))
+  grand.mse[n.ind,"MR"] = loss_sq(test.out,colMeans(face.ylod))
   # print update to screen
-  print(paste0("Finished running CMR for n.lod = ", n.lod))  
+  print(paste0("Finished running FACE for n.lod = ", n.lod))  
   print(paste0("MSE = ", grand.mse[n.ind,"MR"]))  
   print(paste0("---------------------------------"))
   

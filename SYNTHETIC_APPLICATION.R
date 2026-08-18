@@ -59,7 +59,7 @@ which.cov.group = c(rep(1,p1),rep(2,p2),
 ###########################
 # run GS
 tic = Sys.time()
-out.cmr.cusp  = CMR_cusp_GS(Y,X,
+out.face.cusp  = FACE_cusp_GS(Y,X,
                             k = p,
                             S = 20000,
                             burnin = 10000,
@@ -67,15 +67,15 @@ out.cmr.cusp  = CMR_cusp_GS(Y,X,
                             alpha = floor(p/3),
                             a.theta = 1/2, b.theta = 1/2,
                             which.cov.group = which.cov.group)
-toc.cmr.cusp = Sys.time() - tic
-cmr.cusp = qr.solve(matrix(colMeans(out.cmr.cusp$cov.inv),ncol = p)) 
+toc.face.cusp = Sys.time() - tic
+face.cusp = qr.solve(matrix(colMeans(out.face.cusp$cov.inv),ncol = p)) 
 ###########################
 
 ###########################
 ## for plotting
 
 # cor mat for all k
-cor.hat.stein.collect = cov2cor(cmr.cusp)
+cor.hat.stein.collect = cov2cor(face.cusp)
 
 # get color limits so color scale is uniform across plots
 univ.col.lims = c(min(0,min(cor.hat.stein.collect)),
@@ -141,7 +141,7 @@ image(x = 1:p, y = 1:p, z = cor.hat.stein.collect[,p:1],
       xaxt="n",yaxt="n",xlab="",ylab="",
       cex = 3, cex.main = 1.4,
       zlim = univ.col.lims,
-      main = paste0("Posterior Correlation (CMR)"))
+      main = paste0("Posterior Correlation (FACE)"))
 plot.tesie.lines()
 cor.legend.inds = c(1,3,6,9,11)
 legend(
@@ -225,13 +225,13 @@ legend(3,12,legend = c("Reject","Don't Reject"),
 
 
 ####################################
-###### UQ CMR
+###### UQ FACE
 
 which.uppertri = matrix(1:(p^2),ncol = p)[upper.tri(eye(p))]
-uppertri.mcmc = out.cmr.cusp$cov[,which.uppertri]
+uppertri.mcmc = out.face.cusp$cov[,which.uppertri]
 
-CMR.CIs = apply(uppertri.mcmc,2,function(j)quantile(j,c(alpha/2,1-alpha/2)))
-test.incl0 = apply(CMR.CIs,2,function(j)(0>=j[1])&(0<=j[2])) |> as.numeric()
+FACE.CIs = apply(uppertri.mcmc,2,function(j)quantile(j,c(alpha/2,1-alpha/2)))
+test.incl0 = apply(FACE.CIs,2,function(j)(0>=j[1])&(0<=j[2])) |> as.numeric()
 
 Sig.Inclu0 = matrix(-1,nrow=p,ncol=p)
 Sig.Inclu0[upper.tri(Sig.Inclu0)] = test.incl0
@@ -242,7 +242,7 @@ image(x = 1:p, y = 1:p, z = Sig.Inclu0[,p:1],
       xaxt="n",yaxt="n",xlab="",ylab="",
       col = c("Gray","White","Blue"),
       cex = 3, cex.main = 1.4,
-      main = "CMR: Element-wise test of 0 corr.")
+      main = "FACE: Element-wise test of 0 corr.")
 plot.tesie.lines()
 legend(3,12,legend = c("Reject","Don't Reject"),
        fill=c("White","Blue"),bty="y")

@@ -1,12 +1,12 @@
 library(truncnorm) # for truncated normal for sampling lod
 library(LaplacesDemon) # for LaplacesDemon::dmvt (multivariate Student's t) for cusp
 ##########################################################
-### Covariance Meta Regression Model with CUSP prior on Gamma Gibbs Sampler- CMR_Gcusp_GS
+### Feature Aware Covariance Estimation Model with CUSP prior on Gamma Gibbs Sampler- FACE_Gcusp_GS
 ## data
 #
 #
 #
-## CMR_GS code copied and edited to add cusp prior on Gamma and 
+## FACE_GS code copied and edited to add cusp prior on Gamma and 
 ## remove Gamma dependence on T
 ## CUSP code adapted from https://github.com/siriolegramanti/CUSP/blob/master/cusp.R
 #
@@ -26,7 +26,7 @@ library(LaplacesDemon) # for LaplacesDemon::dmvt (multivariate Student's t) for 
 ## optional parameters
 # 
 ##########################################################
-CMR_cusp_GS = function(Y,X = NA,
+FACE_cusp_GS = function(Y,X = NA,
                        k = round(ncol(Y)/2),
                        S = 5100,
                        burnin = 100,
@@ -70,9 +70,8 @@ CMR_cusp_GS = function(Y,X = NA,
   q = ncol(X)
   
   ## IG shape/rate parameters
-  a.d = b.d = 1
-  a.xi = b.xi = 1
-  a.tau = b.tau = 1
+  a.d = a.xi = a.tau = 2
+  b.d = b.xi = b.tau = 2/5
   
   ## CUSP parameters
   # a.theta = b.theta = 2
@@ -533,7 +532,7 @@ cusp_factor_adapt <- function(y,my_seed,N_sampl,alpha,a_sig,b_sig,a_theta,b_thet
   return(output)
 }
 ##########################################################
-### CMR Function: get design matrix for matrix-variate data structure
+### FACE Function: get design matrix for matrix-variate data structure
 # for matrix variate data Y_i (p1 x p2) <=> multivariate data y_i (p1*p2 x 1)
 # p1: row dimension of matrix-variate data
 # p2: column dimension of matrix-variate data
@@ -564,7 +563,7 @@ getMatDesignMat = function(p1,p2){
   return(X)
 }
 ##########################################################
-### CMR Function: get design matrix for categorical vector
+### FACE Function: get design matrix for categorical vector
 # CV: vector of lenght p consisting of category membership for G<=p unique categories
 # output: X (p) x (G) design matrix indicating row/column group membership of each of the (p1*p2) variables
 ##########################################################

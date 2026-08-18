@@ -134,23 +134,23 @@ for ( n.ind in 1:length(Ns) ){
     ####################################
  
     ####################################
-    ## run CMR GS with CUSP
-    out.cmr.cusp  = CMR_cusp_GS(Y,X,
+    ## run FACE GS with CUSP
+    out.face.cusp  = FACE_cusp_GS(Y,X,
                                 k = floor((p-1)/2),
                                 S = S.fancy,
                                 burnin = burnin.fancy,
                                 my.seed = sim.ind + 200,
                                 alpha = floor(p/3),
                                 a.theta = 1/2, b.theta = 1/2)
-    output$MR.O = qr.solve(matrix(colMeans(out.cmr.cusp$cov.inv),ncol = p)) ## stein estimator
-    toc$MR.O  = out.cmr.cusp$runtime
+    output$MR.O = qr.solve(matrix(colMeans(out.face.cusp$cov.inv),ncol = p)) ## stein estimator
+    toc$MR.O  = out.face.cusp$runtime
     ####################################
     
     ####################################
-    ## run intercept CMR GS if you haven't
+    ## run intercept FACE GS if you haven't
     if (!all(is.na(X))){
-      ## run CMR GS with CUSP
-      out.cmr.cusp  = CMR_cusp_GS(Y,X = NA,
+      ## run FACE GS with CUSP
+      out.face.cusp  = FACE_cusp_GS(Y,X = NA,
                                   k = ceiling((p-1)/2),
                                   S = S.fancy,
                                   burnin = burnin.fancy,
@@ -158,8 +158,8 @@ for ( n.ind in 1:length(Ns) ){
                                   alpha = floor(p/3),
                                   a.theta = 1/2, b.theta = 1/2)
       
-      output$MR.I = qr.solve(matrix(colMeans(out.cmr.cusp$cov.inv),ncol = p)) ## stein estimator
-      toc$MR.I  = out.cmr.cusp$runtime
+      output$MR.I = qr.solve(matrix(colMeans(out.face.cusp$cov.inv),ncol = p)) ## stein estimator
+      toc$MR.I  = out.face.cusp$runtime
     }
     ####################################
     
