@@ -30,7 +30,7 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
 
 # When to use FACE
 
-FACE estimates a `p x p` covariance matrix from `n` observations based on \textit{feature covariates}, covariates that vary with the outcome index, and describe auxiliary information about the outcome variables themselves. In a chemical exposure data set, for example, feature covariates might include chemical class, assay time, or chemical-molecular properties like boiling point. 
+FACE estimates a `p x p` covariance matrix from `n` observations based on \textit{feature covariates}, covariates that vary with the outcome index, and describe auxiliary information about the outcome variables themselves. In a chemical exposure data set, for example, feature covariates might include chemical class, assay time, or chemical-molecular properties like vapor pressure. 
 
 
 The sampling model is a Bayesian factor model,
@@ -44,8 +44,7 @@ $$ \lambda_j \sim N_k(\Gamma^\top x_j, \; \tau^2 d_j \Theta). $$
 
 Here $x_j$ is the vector of features for variable $j$. Variables with similar
 features are shrunk toward similar loadings, and so toward similar covariance
-structure. If the features carry no signal, $\Gamma$ shrinks to zero and you
-recover a standard factor model — so an uninformative feature costs you little.
+structure. 
 
 **You need two objects:**
 
