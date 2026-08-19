@@ -1,10 +1,9 @@
 # Feature Aware Covariance Estimation
 
-Replication code for the paper:
+Code to implement the feature aware covariance estimation prior for factor models, proposed in the following article:
 
-> Bersson, E., Hoffman, K., Stapleton, H. M., and Dunson, D. B. (2025). *Feature aware covariance estimation, with application to mixtures of chemical exposures.* arXiv:2504.08220. https://arxiv.org/abs/2504.08220
+> Bersson, E., Hoffman, K., Stapleton, H. M., and Dunson, D. B. (2025). *Feature aware covariance estimation, with application to mixtures of chemical exposures.* arXiv:2504.08220. https://arxiv.org/abs/2504.08220.
 
-Code to implement the feature aware covariance estimation prior for factor models, proposed in `Feature aware covariance estimation, with application to mixtures of chemical exposures'.
 
 Files:
  - VIGNETTE.html: Worked example showing how to fit the FACE model to your own data. Start here.
