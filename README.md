@@ -7,7 +7,7 @@ Replication code for the paper:
 Code to implement the feature aware covariance estimation prior for factor models, proposed in `Feature aware covariance estimation, with application to mixtures of chemical exposures'.
 
 Files:
- - VIGNETTE.Rmd: Worked example showing how to fit the FACE model to your own data. Start here.
+ - VIGNETTE.html: Worked example showing how to fit the FACE model to your own data. Start here.
  - SIMULATION.R: Simulation replication codes for tables in Secion 4 of the article.
  - SYNTHETIC_APPLICATION.R: Implementation of the FACE model for a synthetic mixture of exposure dataset.
  - SYNTHETIC_LOD_EXPERIMENT.R: Replication codes for the LOD experiment in Section 5.2, using the synethetic dataset.
