@@ -6,7 +6,7 @@ Code to implement the feature aware covariance estimation prior for factor model
 
 
 Files:
- - VIGNETTE.html: Worked example showing how to fit the FACE model to your own data. Start here.
+ - VIGNETTE.pdf: Example demonstrating how to fit the FACE model to your own data. Start here.
  - SYNTHETIC_APPLICATION.R: Implementation of the FACE model for a synthetic mixture of exposure dataset.
  - SIMULATION.R: Simulation replication codes for Secion 4 of the article.
  - SYNTHETIC_LOD_EXPERIMENT.R: Replication codes for the LOD experiment in Section 5.2, using the synethetic dataset.
