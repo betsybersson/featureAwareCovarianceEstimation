@@ -49,11 +49,13 @@ FACE_cusp_GS = function(Y,X = NA,
   
   ###########################
   ## set hyper params
+  # data dimensions
   p = ncol(Y)
   n = nrow(Y)
   
   ## handle some things for meta covariates
   ## incl some warnings to make sure dimensions are right
+  # coerce single meta covariate to a matrix
   if (is.vector(X)){
     X = matrix(X,ncol=1)
   }
@@ -67,9 +69,10 @@ FACE_cusp_GS = function(Y,X = NA,
     stop("Y,X dimension mismatch!")
   }
   
+  # number of meta covariates
   q = ncol(X)
   
-  ## IG shape/rate parameters
+  ## IG shape/rate parameters for ds and tau2
   a.d = a.xi = a.tau = 2
   b.d = b.xi = b.tau = 2/5
   
@@ -82,18 +85,19 @@ FACE_cusp_GS = function(Y,X = NA,
   ###########################
   ## initialize values
   # sampling model
-  Lambda = matrix(0,ncol = k, nrow = p)
-  eta = matrix(0,ncol = k, nrow = n)
-  ds = rep(1,p); D = D.inv = diag(ds)
+  Lambda = matrix(0,ncol = k, nrow = p) # p x k loadings
+  eta = matrix(0,ncol = k, nrow = n) # n x k factor scores
+  ds = rep(1,p); D = D.inv = diag(ds) # idiosyncratic variances
   # factor model
-  Gamma = matrix(0,nrow = q, ncol = k)
-  tau2 = 1; Tau = Tau.inv = eye(k)*tau2
+  Gamma = matrix(0,nrow = q, ncol = k) # q x k meta covariate coefficients
+  tau2 = 1; Tau = Tau.inv = eye(k)*tau2 # global shrinkage scale
   # CUSP
-  theta.inv = theta = rep(1,k)
+  theta.inv = theta = rep(1,k) # column-specific loading variances
   Theta = diag(1/theta); Theta.inv = diag(theta.inv)
-  z = rep(2,k)
-  pi = rep(1,k)/k
-  nu = rep(.2,k); nu[k] = 1
+  z = rep(2,k) # spike/slab indicator per column
+  pi = rep(1,k)/k # multinomial probs for z
+  nu = rep(.2,k); nu[k] = 1 # stick-breaking proportions
+  # stick-breaking weights from nu
   omega.function = function(nu){
     omega = array(NA,dim=k)
     omega[1] = nu[1]
@@ -103,6 +107,7 @@ FACE_cusp_GS = function(Y,X = NA,
     return(omega)
   }
   omega = omega.function(nu)
+  ## storage for values imputed below the LOD
   if (!any(is.na(which.lod))){ ### bad- writing for my fake example where each column has same # of missingness
     n.lod = length(row.ind.lod)
     y.lod = matrix(0,nrow = n.lod,ncol=p)
@@ -114,6 +119,7 @@ FACE_cusp_GS = function(Y,X = NA,
   
   ###########################
   ## organize shit for generalized lasso
+  ## group-specific prior scales on rows of Gamma
   L = L.inv = eye(q)
   if ( !any(is.na(which.cov.group)) ){
     q.tilde = table(which.cov.group)
@@ -128,6 +134,7 @@ FACE_cusp_GS = function(Y,X = NA,
   
   ###########################
   ## create storage 
+  # number of retained draws depends on save.all
   if (save.all == 1){
     n.save.out = S
   } else if (save.all == 0 | save.all == "ICO") {
@@ -136,6 +143,7 @@ FACE_cusp_GS = function(Y,X = NA,
     index = 1  
   } 
   if (save.all == "ICO"){
+    # running sums only
     cov.inv.out = cov.inv.det.out = 0
   } else {
     cov.out = cov.inv.out = cov.shrinkto.inv.out = array(NA,dim = c(n.save.out,p*p))
@@ -152,13 +160,14 @@ FACE_cusp_GS = function(Y,X = NA,
   
   ###########################
   ## global helpers
+  # reused cross product of meta covariates
   XXt = X %*% t(X)
   ###########################
   
   ###########################
   ## GS
   tic = Sys.time()
-  for ( s in 1:S ){
+  for ( s in 1:S ){ # begin Gibbs sampler
     
     ## sample y.lod
     # sample values below LOD from truncated normal full conditional
@@ -182,14 +191,17 @@ FACE_cusp_GS = function(Y,X = NA,
     }
     
     ## sample etais
+    # normal full conditional, shared covariance across i
     R = t(Lambda) %*% D.inv
     S.eta.inv = qr.solve(R %*% Lambda + eye(k))
     M.eta.help = S.eta.inv %*% R
     
+    # subject-specific means, sampled in parallel
     eta.list = mclapply(1:n,function(i) rmvnorm(M.eta.help %*% Y[i,],S.eta.inv))
     eta = rbind.list(eta.list)
     
     ## sample djs
+    # IG full conditional: residual SS plus loading deviation from X_j Gamma
     for ( j in 1:p ){
       lambda.j = Lambda[j,]
       helper = (lambda.j - t(Gamma) %*% X[j,])
@@ -200,12 +212,14 @@ FACE_cusp_GS = function(Y,X = NA,
     D = diag(ds); D.inv = diag(1/ds)
     
     ## sample Lambda
+    # matrix normal full conditional centered at X Gamma
     S.gamma.inv = qr.solve(Theta.inv / tau2 + t(eta) %*% eta)
     M.gamma = X %*% Gamma %*% Theta.inv / tau2 + t(Y) %*% eta
     Lambda = rmatnorm(M.gamma %*% S.gamma.inv,
                       V = S.gamma.inv, U = D)
     
     ## sample Gamma
+    # matrix normal full conditional, ridge penalty L.inv
     R = t(X) %*% D.inv / tau2
     S.gamma.inv = qr.solve(R %*% X + L.inv)
     M.gamma = R %*% Lambda
@@ -213,6 +227,7 @@ FACE_cusp_GS = function(Y,X = NA,
     
     
     ## sample tau2
+    # IG full conditional from Lambda deviations around X Gamma
     helper = Lambda - X %*% Gamma
     S.tau = mat_trace(t(helper) %*% D.inv %*% helper %*% Theta.inv) + b.tau
     tau2 = 1/rgamma(1, (p*k + a.tau)/2, S.tau/2)
@@ -221,18 +236,21 @@ FACE_cusp_GS = function(Y,X = NA,
     
     ### CUSP- code adapted from https://github.com/siriolegramanti/CUSP/blob/master/cusp.R
     ## sample z
+    # marginal covariance of a slab column
     XLXt = X %*% L %*% t(X)
     lhd_spike<-rep(0,k)
     lhd_slab<-rep(0,k)
     for (h in 1:k){
+      # spike: iid normal with variance theta.inf
       lhd_spike[h]<-exp(sum(log(dnorm(Lambda[,h], mean = 0, sd = theta.inf^(1/2), log = FALSE))))
       ## numerical issue - force to be symmetric
       tempS = (b.theta/a.theta)*(XLXt + tau2 * D)
       tempS[lower.tri(tempS)] <- t(tempS)[lower.tri(tempS)]
       lhd_slab[h]<-LaplacesDemon::dmvt(x=Lambda[,h], mu=rep(0,p), S=tempS, 
                                        df=2*a.theta)
+      # mix spike/slab likelihoods with stick-breaking weights
       pi<-omega*c(rep(lhd_spike[h],h),rep(lhd_slab[h],k-h))
-      if (sum(pi)==0){
+      if (sum(pi)==0){ # guard against underflow
         pi<-c(rep(0,k-1),1)
       } else {
         pi<-pi/sum(pi)
@@ -241,6 +259,7 @@ FACE_cusp_GS = function(Y,X = NA,
     }
     
     ## sample nu
+    # beta full conditional from stick-breaking counts
     for (h in 1:(k-1)){
       nu[h] <- rbeta(1, shape1 = 1+sum(z == h), 
                      shape2 = alpha+sum(z > h))
@@ -251,9 +270,9 @@ FACE_cusp_GS = function(Y,X = NA,
     
     ## sample theta
     for (h in 1:k){
-      if (z[h]<=h){
+      if (z[h]<=h){ # spike column: fix precision
         theta.inv[h]<-theta.inf^(-1)
-      } else {
+      } else { # slab column: gamma full conditional
         theta.inv[h] <- 
           rgamma(n = 1,
                  shape = a.theta + 0.5*p,
@@ -264,6 +283,7 @@ FACE_cusp_GS = function(Y,X = NA,
     
     
     ## sample ls
+    # IG full conditional per meta covariate group
     if (!any(is.na(which.cov.group))){
       for (j in 1:n.q.tilde){
         Gamma.tilde = Gamma[which.cov.group == j,,drop=F]
@@ -271,6 +291,7 @@ FACE_cusp_GS = function(Y,X = NA,
                          (1+k*q.tilde[j])/2,
                          (1 + mat_trace(Gamma.tilde %*% Theta.inv %*% t(Gamma.tilde))/2)
         )
+        # write group scale back into L
         if (sum(which.cov.group == j)>1){
           diag(L[which.cov.group == j,which.cov.group == j]) = ls[j]
           diag(L.inv[which.cov.group == j,which.cov.group == j]) = 1/ls[j]
@@ -285,12 +306,14 @@ FACE_cusp_GS = function(Y,X = NA,
     
     
     ## save output
-    if (save.all == 0){
+    if (save.all == 0){ # keep post burnin, thinned draws
       if ((s>burnin)&((s %% thin)==0)){
         
+        # induced sampling covariance and its inverse
         cov.temp = Lambda %*% t(Lambda) + D
         cov.inv.temp = qr.solve(cov.temp)
         
+        # prior covariance Lambda shrinks toward
         cov.shrinkto = D * k * tau2 + X %*% Gamma %*% t(Gamma) %*% t(X)
         
         cov.out[index,] = c(cov.temp)
@@ -306,7 +329,7 @@ FACE_cusp_GS = function(Y,X = NA,
         
         index = index + 1
       }
-    } else if (save.all == 1){
+    } else if (save.all == 1){ # keep every draw
       
       cov.temp = Lambda %*% t(Lambda) + D
       cov.inv.temp = qr.solve(cov.temp)
@@ -325,7 +348,7 @@ FACE_cusp_GS = function(Y,X = NA,
       ls.out[index,] = c(ls)
       
       
-    } else if (save.all == "ICO"){
+    } else if (save.all == "ICO"){ # accumulate running sums only
       cov.temp = Lambda %*% t(Lambda) + D
       
       cov.inv.out = cov.inv.out + c(qr.solve(cov.temp))

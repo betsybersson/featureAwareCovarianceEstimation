@@ -1,0 +1,351 @@
+---
+title: "Implementing FACE on your own data"
+author: "Elizabeth Bersson"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+::: {#intro}
+This vignette shows how to implement the FACE model described in
+[Feature aware covariance estimation, with application to mixtures of chemical
+exposures](https://arxiv.org/abs/2504.08220). It
+walks through a complete analysis on a synthetic
+chemical exposure dataset while highlighting how to
+substitute in your own data. 
+
+The code here is drawn from `SYNTHETIC_APPLICATION.R`, which runs the same
+analysis end to end as a plain script. Refer to it if you would rather read the
+entire workflow in one place.
+
+<h2 id="toc-heading">Table of contents</h2>
+:::
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.width = 7, fig.height = 6, fig.align = "center")
+```
+
+```{js move-toc, echo = FALSE}
+// move the table of contents below the introduction
+document.addEventListener("DOMContentLoaded", function() {
+  var toc = document.getElementById("TOC"),
+      intro = document.getElementById("intro");
+  if (toc && intro) intro.parentNode.insertBefore(toc, intro.nextSibling);
+});
+```
+
+
+
+# When to use FACE
+
+FACE estimates a `p x p` covariance matrix from `n` observations based on \textit{feature covariates}, covariates that vary with the outcome index, and describe auxiliary information about the outcome variables themselves. In a chemical exposure data set, for example, feature covariates might include chemical class, assay time, or chemical-molecular properties like boiling point. 
+
+
+The sampling model is a Bayesian factor model,
+
+$$ y_i = \Lambda \eta_i + \epsilon_i, \qquad \epsilon_i \sim N_p(0, D), \qquad
+   \eta_i \sim N_k(0, I), $$
+
+with a prior that regresses the loadings on the features:
+
+$$ \lambda_j \sim N_k(\Gamma^\top x_j, \; \tau^2 d_j \Theta). $$
+
+Here $x_j$ is the vector of features for variable $j$. Variables with similar
+features are shrunk toward similar loadings, and so toward similar covariance
+structure. If the features carry no signal, $\Gamma$ shrinks to zero and you
+recover a standard factor model — so an uninformative feature costs you little.
+
+**You need two objects:**
+
+| object | dimension | meaning |
+|--------|-----------|---------|
+| `Y` | `n x p` | your data: $n$ observations, $p$ response variables |
+| `X` | `p x q` | your features: $q$ features for each of the $p$ response variables |
+
+Ensure your data matrices are correctly aligned! Row `j` of `X` must
+describe column `j` of `Y`.
+
+# Setup
+
+```{r load, message = FALSE}
+source("helpers.R")        # helper functions
+source("functions.R")      # FACE specific functions
+
+library(parallel)          # used within FACE Gibbs sampler
+library(dplyr)             # used for plotting
+library(RColorBrewer)      # used for plotting
+library(readxl)            # used to import synthetic data
+
+set.seed(123)              # set a seed for reproducibility
+```
+
+# Step 1: prepare the data matrix `Y`
+
+Our synthetic example mimics the article's motivating study: it consists of exposures to `r 21` chemicals measured by
+`r 2` different sampling methods on
+`n = 73` participants. This yields `p = 42` response variables for each participant.
+
+```{r data-create-aux, include = FALSE}
+chemnames = c("EHDPP","TCEP","TCPP","TDCPP","TPP","2IPPDPP",
+              "24DIPPDPP","4tBPDPP","B4TBPP","DEP","DiBP","BBP",
+              "DBP","DEHP","DINP","TOTM","BPA","EPB",
+              "MPB","PPB","TCS")
+chemclass = c(rep("OPE",9), rep("phthalate",7), rep("phenol",5))
+method.names = c("WB","Dust")
+
+aux.data = cbind(paste0("V",1:42),rep(chemnames,2),rep(chemclass,2),rep(method.names,each = length(chemnames)))
+colnames(aux.data) = c("Variable","Chemical","Chemical Class","Measurement Source")
+
+aux.covs.xlsx = read_excel("VPandHPVforBetsy.xlsx") |>
+  select(3, 4)
+colnames(aux.covs.xlsx) = c("Vapor.Pressure", "Production.Volume")
+aux.covs.xlsx = aux.covs.xlsx |>
+  mutate(#prodVol   = as.numeric(as.factor(prodVol)) - 1,
+         Vapor.Pressure = Vapor.Pressure * 133.322) |>
+  as.matrix()
+
+aux.data = cbind(aux.data,rbind(aux.covs.xlsx,aux.covs.xlsx))
+
+write.csv(aux.data,"data_dictionary.csv", row.names=F)
+```
+
+```{r data-create, include = FALSE}
+p1 = length(chemnames)      # chemicals
+p2 = length(method.names)   # sampling methods
+n  = 73                     # participants
+p  = p1 * p2                # total number of variables
+
+# true covariance: strong within-wristband correlation, moderate within-dust
+Sigma = matrix(.2, ncol = p, nrow = p)
+Sigma[1:p1, 1:p1]         = eye(p1) * (1 - .8) + .8
+Sigma[(p1+1):p, (p1+1):p] = eye(p1) * (1 - .5) + .5
+
+Y = rmatnorm(matrix(0, ncol = p, nrow = n), V = Sigma)
+Y = scale(Y)
+colnames(Y) = paste0("V", 1:p)
+
+write.csv(Y,"synethetic_data.csv", row.names=F)
+```
+
+```{r response-data}
+# import response data
+Y = as.matrix(read.csv("synethetic_data.csv"))
+p = ncol(Y)
+n = nrow(Y)
+
+# preview the data
+Y[1:5,1:6]
+dim(Y)
+```
+
+**For your data.** `Y` is an `n x p` numeric matrix.
+
+* **Center it.** The model has no intercept, so each column must be mean zero.
+* **Consider scaling.** `scale()` puts every variable on a common scale, which
+  makes the resulting estimate a correlation-scale object and keeps the prior on
+  `D` sensible. For exposure concentrations, log-transform before scaling.
+* **Column order matters** — fix it now, because `X` must follow it. Here the
+  order is chemical-within-method: chemicals 1--21 for wristbands, then
+  chemicals 1--21 for dust.
+
+# Step 2: build the feature matrix `X`
+
+
+Our data has a corresponding data dictionary that we will use to construct an outcome feature matrix `X` which will consist of one row per variable in `Y`. We will use these auxilary variables to construct meta covariates for our analysis.
+
+
+```{r auxilary-data}
+# import data dictionary
+data.dictionary = read.csv("data_dictionary.csv")
+
+# print data
+head(data.dictionary)
+```
+
+## Categorical features
+
+`getCatDesignMat()` turns a length-`p` vector of group labels into a binary
+indicator matrix. Chemical class is the natural example. 
+
+```{r cat}
+# construct the feature covariate
+class.mat = getCatDesignMat(data.dictionary$Chemical.Class)
+
+dim(class.mat)
+colnames(class.mat)
+```
+
+## Matrix-variate structure
+
+When each observation is naturally a `p1 x p2` matrix flattened into a length-`p`
+vector — here chemical-by-method — `getMatDesignMat(p1, p2)` returns indicators
+for row membership and column membership. This lets FACE learn a chemical effect
+and a method effect separately.
+
+```{r mat}
+# extract matrix dimensions from auxilary data
+p1 = length(unique(data.dictionary$Chemical))
+p2 = length(unique(data.dictionary$Measurement.Source))
+
+# construct the feature covariate
+struct.mat = getMatDesignMat(p1, p2)
+
+dim(struct.mat)
+colnames(struct.mat)
+```
+
+Note the vectorization convention: `getMatDesignMat` assumes `Y`'s columns were
+formed by `c()` on the `p1 x p2` matrix, i.e. all `p1` chemicals for method 1,
+then all `p1` chemicals for method 2.
+
+## Continuous features
+
+Any numeric property of a variable can be a column of `X`. Here we read in vapor
+pressure and an indicator for high production volume, then `rbind` them so each
+chemical's properties appear once for each sampling method.
+
+```{r cts, message = FALSE}
+# extract the continuous variables we are interested in
+cont.covs = data.dictionary[,c("Vapor.Pressure","Production.Volume")]
+# convert a ("yes","no") variable to numeric binary
+cont.covs$Production.Volume = as.numeric(as.factor(cont.covs$Production.Volume))-1
+```
+
+## Put them together
+
+```{r X}
+X = cbind(struct.mat,class.mat,cont.covs) |> 
+  as.matrix()
+
+dim(X)          # p x q
+colnames(X)
+```
+
+
+**If you have no features at all,** pass `X = NA`. FACE then uses an intercept
+column, giving a factor model that shrinks all loadings toward a common value.
+
+
+# Step 3: group the features with `which.cov.group`
+
+FACE puts a generalized ridge prior on the rows of $\Gamma$, so that each *set*
+of related feature columns gets its own shrinkage scale. This matters when your
+features are on different scales or of different types.
+
+`which.cov.group` is an integer vector of length `q` labeling which group each
+**column of `X`** belongs to. Columns sharing a label share a variance
+parameter, which is estimated from the data.
+
+```{r groups}
+which.cov.group = c(rep(1, p1),                        # chemical indicators
+                    rep(2, p2),                        # measurement source indicators
+                    rep(3, length(unique(chemclass))), # chemical class
+                    4,                                 # production volume
+                    5)                                 # vapor pressure
+
+length(which.cov.group) == ncol(X)
+```
+
+Rule of thumb: one group per conceptual block of features. Give each standalone
+continuous covariate its own group. Omit the argument entirely (leave it `NA`)
+to use a common scale for all features.
+
+# Step 4: run the sampler
+
+```{r fit, results = "hide", cache = T}
+model.out = FACE_cusp_GS(Y, X,
+                        which.cov.group = which.cov.group,
+                        k = p,                      # upper bound on # factors
+                        S = 2000,                   # total MCMC iterations
+                        burnin = 1000,              # number of MCMC burnin iterations
+                        my.seed = 1)                # seed for replicability
+```
+
+
+The arguments worth understanding:
+
+| input | description | 
+|----------|--------------|
+| `k` | An **upper bound** on the number of latent factors  |
+| `S`, `burnin`, `thin` | MCMC parameters |  |
+| `my.seed` | seed for reproducibilty | 
+| `save.all` | what to output: `0` (default) returns thinned post-burn-in draws for key parameters. `1` returns every iteration. `"ICO"` returns only the running mean of the inverse covariance — use if `p` is very large. |
+
+**Key function outputs**:
+`cov` are MCMC samples of the posterior covariance matrix and `cov.inv` MCMC samples of the posterior precision matrix, both are stored as vectorized `p x p`
+matrices (one iteration per row). 
+
+# Step 5: summarize the posterior
+
+## Point estimate
+
+The paper reports the Bayes estimate under Stein's loss, which is the inverse of
+the posterior mean of the precision matrix:
+
+```{r pointest}
+face.cov = qr.solve(matrix(colMeans(model.out$cov.inv), ncol = p))
+face.cor = cov2cor(face.cov)
+```
+
+## Plot it
+
+```{r heatmap}
+col.pal = c(brewer.pal(9, "GnBu")[2], "#FFFFFF", brewer.pal(9, "YlOrRd"))
+col.lims = c(min(0, min(face.cor)), 1)
+
+image(x = 1:p, y = 1:p, z = face.cor[, p:1],
+      col = col.pal, zlim = col.lims,
+      xaxt = "n", yaxt = "n", xlab = "", ylab = "",
+      main = "Posterior correlation (FACE)")
+# block boundary between the two sampling methods
+abline(h = p/2 + .5, v = p/2 + .5, col = "black", lwd = 3)
+# chemical class boundaries
+for (b in cumsum(table(chemclass))[1:2]) {
+  abline(v = c(b, p/2 + b) + .5)
+  abline(h = p - c(b, p/2 + b) + .5)
+}
+legend("bottomleft", inset = 0.052, bg = "white",
+       legend = round(seq(col.lims[1], col.lims[2],
+                          length.out = length(col.pal)), 2)[c(1,3,6,9,11)],
+       fill = col.pal[c(1,3,6,9,11)], cex = 1)
+```
+
+The two diagonal blocks — strong correlation within wristbands, moderate within
+dust — are the structure we simulated. `SYNTHETIC_APPLICATION.R` has a fuller
+version of this plot with class labels on both axes.
+
+# Template for your data
+
+```{r template, eval = FALSE}
+source("helpers.R")
+source("functions.R")
+library(parallel)
+
+## 1. Y: n x p, centered (and usually scaled). Fix the column order here.
+Y = scale(your.data.matrix)
+n = nrow(Y); p = ncol(Y)
+
+## 2. X: p x q, one ROW per column of Y, in the same order.
+X = your.covariate.matrix
+stopifnot(nrow(X) == p)
+
+## 3. which.cov.group: length q, one label per COLUMN of X, or NA.
+which.cov.group = NA
+
+## 4. Fit.
+out = FACE_cusp_GS(Y, X,
+                   k = p,
+                   S = 20000, burnin = 10000, thin = 1,
+                   my.seed = 123,
+                   alpha = floor(p/3),
+                   a.theta = 1/2, b.theta = 1/2,
+                   which.cov.group = which.cov.group)
+
+## 5. Summarize.
+cov.hat = qr.solve(matrix(colMeans(out$cov.inv), ncol = p))
+cor.hat = cov2cor(cov.hat)
+```
+
+
